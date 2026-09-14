@@ -226,6 +226,13 @@
   }
   .shots .add{font-size:12px;color:var(--ink-2);align-self:center}
 
+  /* ボタンを均等な幅で並べる。端数が出ても見た目が崩れない */
+  .bgrid{
+    display:grid;gap:8px;
+    grid-template-columns:repeat(auto-fit, minmax(128px, 1fr));
+  }
+  .bgrid > *{width:100%;text-align:center}
+
   .log{padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
   .log:last-child{border-bottom:0}
   .log .head{display:flex;gap:8px;align-items:baseline}
@@ -287,12 +294,12 @@
     <div class="photo">
       <p class="lead">写真から下書きする</p>
       <p class="note" style="margin:0 0 8px">問題を撮る、または保存済みの写真から選ぶと、出典とタグの候補を埋めます。<strong>写真は保存されず、読み取り後すぐ消えます。</strong></p>
-      <div class="row">
-        <label class="btn ghost small" for="pic-cam" style="display:inline-block">写真を撮る</label>
-        <input type="file" id="pic-cam" accept="image/*" capture="environment" style="display:none" onchange="analyzePhoto(this)">
-        <label class="btn ghost small" for="pic-lib" style="display:inline-block">保存済みから選ぶ</label>
-        <input type="file" id="pic-lib" accept="image/*" style="display:none" onchange="analyzePhoto(this)">
+      <div class="bgrid">
+        <label class="btn ghost small" for="pic-cam" style="display:block">写真を撮る</label>
+        <label class="btn ghost small" for="pic-lib" style="display:block">保存済みから選ぶ</label>
       </div>
+      <input type="file" id="pic-cam" accept="image/*" capture="environment" style="display:none" onchange="analyzePhoto(this)">
+      <input type="file" id="pic-lib" accept="image/*" style="display:none" onchange="analyzePhoto(this)">
       <img id="pic-thumb" class="thumb" hidden alt="読み取り中の写真">
       <div id="pic-busy" class="busy" hidden>読み取っています</div>
       <div id="pic-result" class="note" hidden></div>
@@ -373,19 +380,19 @@
     <div class="photo" style="margin-top:14px">
       <p class="lead">参考の写真を添える（任意）</p>
       <p class="note" style="margin:0 0 8px">生徒の答案や、つまずいた問題を添えられます。何枚でも、保存済みの写真からも選べます。<strong>相談に使うだけで保存はしません。</strong></p>
-      <div class="row">
-        <label class="btn ghost small" for="ai-cam" style="display:inline-block">写真を撮る</label>
-        <input type="file" id="ai-cam" accept="image/*" capture="environment" style="display:none" onchange="attachPhoto(this)">
-        <label class="btn ghost small" for="ai-lib" style="display:inline-block">保存済みから選ぶ</label>
-        <input type="file" id="ai-lib" accept="image/*" multiple style="display:none" onchange="attachPhoto(this)">
+      <div class="bgrid">
+        <label class="btn ghost small" for="ai-cam" style="display:block">写真を撮る</label>
+        <label class="btn ghost small" for="ai-lib" style="display:block">保存済みから選ぶ</label>
       </div>
+      <input type="file" id="ai-cam" accept="image/*" capture="environment" style="display:none" onchange="attachPhoto(this)">
+      <input type="file" id="ai-lib" accept="image/*" multiple style="display:none" onchange="attachPhoto(this)">
       <div class="shots" id="ai-shots"></div>
     </div>
 
-    <div class="row" style="margin-top:14px">
-      <button class="btn" onclick="runConsult()">この場で相談する</button>
-      <button class="btn ghost" onclick="buildPrompt()">文章だけ作る</button>
-      <button class="btn ghost" onclick="copyPrompt()">コピー</button>
+    <button class="btn" style="width:100%;margin-top:14px" onclick="runConsult()">この場で相談する</button>
+    <div class="bgrid" style="margin-top:8px">
+      <button class="btn ghost small" onclick="buildPrompt()">文章だけ作る</button>
+      <button class="btn ghost small" onclick="copyPrompt()">コピーする</button>
     </div>
     <div id="ai-busy" class="busy" hidden>考えています</div>
     <pre class="out" id="ai-out" style="margin-top:12px">まだ何も出ていません。</pre>
@@ -400,32 +407,9 @@
   <div class="card">
     <h2>データの持ち出しと復元</h2>
     <p class="note" style="margin:0 0 4px">保存先：<span id="store-where">確認中</span></p>
-    <p class="note" style="margin:0 0 10px">JSONで書き出しておけば、消えても戻せます。別の端末に移すときも同じです。</p>
-    <div class="row">
-      <button class="btn ghost small" onclick="exportJSON()">全部を書き出す</button>
-      <button class="btn ghost small" onclick="exportRecords()">記録だけ書き出す</button>
-      <label class="btn ghost small" for="imp" style="display:inline-block">JSONから読み込む</label>
-      <input type="file" id="imp" accept=".json,application/json" style="display:none" onchange="importJSON(this)">
-      <button class="btn ghost small" onclick="exportCSV()">CSVで書き出す</button>
-    </div>
-    <p class="note" id="size-note"></p>
-    <p class="note" id="imp-msg" hidden></p>
-    <p class="note" id="dl-note" hidden style="color:var(--red)"></p>
-    <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;cursor:pointer">
-      <input type="checkbox" id="imp-replace" style="width:auto;margin-top:3px;flex:none">
-      <span>読み込むとき、分野タグを<strong>入れ替える</strong>（今あるタグを消して、読み込んだものだけにする）</span>
-    </label>
-
-    <div class="keybox">
-      <p class="note" style="margin:0 0 8px">ダウンロードできない環境では、文字をコピーして移せます。</p>
-      <div class="row">
-        <button class="btn ghost small" onclick="showText()">コピー用に表示</button>
-        <button class="btn ghost small" onclick="copyText()">コピーする</button>
-        <button class="btn ghost small" onclick="pasteLoad()">貼り付けた内容を読み込む</button>
-      </div>
-      <textarea id="xfer" placeholder="ここにJSONが出ます。別の端末では、ここに貼り付けてから読み込んでください。" style="margin-top:8px;min-height:120px;font-family:ui-monospace,monospace;font-size:12px"></textarea>
-      <p class="note" id="xfer-msg" hidden></p>
-    </div>
+    <p class="note" style="margin:0 0 12px">書き出して控えを取っておけば、消えても戻せます。別の端末に移すときも同じです。</p>
+    <button class="btn" style="width:100%" onclick="openData()">データを出す・入れる</button>
+    <p class="note" id="size-note" style="margin-top:8px"></p>
   </div>
 </section>
 
@@ -473,6 +457,48 @@
       <span class="count" id="pk-count"></span>
       <button class="btn ghost small" onclick="pickerAdd()">この名前で作る</button>
       <button class="btn small" onclick="closePicker()">決定</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-bg" id="datasheet" hidden onclick="if(event.target===this)closeData()">
+  <div class="sheet" role="dialog" aria-label="データを出す・入れる">
+    <div class="top">
+      <span class="h">データを出す・入れる</span>
+      <button class="btn ghost small" onclick="closeData()">閉じる</button>
+    </div>
+    <div class="body">
+      <p class="note" style="margin:0 0 6px">書き出す</p>
+      <div class="bgrid">
+        <button class="btn ghost small" onclick="exportRecords()">記録だけ</button>
+        <button class="btn ghost small" onclick="exportJSON()">全部（タグ込み）</button>
+        <button class="btn ghost small" onclick="exportCSV()">CSV（表計算用）</button>
+      </div>
+      <p class="note" id="dl-note" hidden style="color:var(--red);margin-top:8px"></p>
+
+      <p class="note" style="margin:18px 0 6px">読み込む</p>
+      <div class="bgrid">
+        <label class="btn ghost small" for="imp" style="display:block;text-align:center">ファイルから</label>
+        <input type="file" id="imp" accept=".json,application/json" style="display:none" onchange="importJSON(this)">
+        <button class="btn ghost small" onclick="pasteLoad()">貼り付けた文字から</button>
+      </div>
+      <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;cursor:pointer">
+        <input type="checkbox" id="imp-replace" style="width:auto;margin-top:3px;flex:none">
+        <span style="font-size:12px;color:var(--ink-2)">分野タグを<strong>入れ替える</strong>（今あるタグを消して、読み込んだものだけにする）</span>
+      </label>
+      <p class="note" id="imp-msg" hidden></p>
+
+      <p class="note" style="margin:18px 0 6px">文字でやり取りする（ファイルが使えないとき）</p>
+      <div class="bgrid">
+        <button class="btn ghost small" onclick="showText()">ここに出す</button>
+        <button class="btn ghost small" onclick="copyText()">コピーする</button>
+      </div>
+      <textarea id="xfer" placeholder="ここにデータが出ます。別の端末では、ここに貼り付けてから「貼り付けた文字から」を押してください。" style="margin-top:8px;min-height:110px;font-family:ui-monospace,monospace;font-size:12px"></textarea>
+      <p class="note" id="xfer-msg" hidden></p>
+    </div>
+    <div class="foot">
+      <span class="count" id="sheet-size"></span>
+      <button class="btn small" onclick="closeData()">閉じる</button>
     </div>
   </div>
 </div>
@@ -1344,12 +1370,24 @@ function exportRecords(){
           JSON.stringify(slim), 'application/json', '記録データ');
 }
 
+/* ---------- データ小窓 ---------- */
+function openData(){
+  document.getElementById('datasheet').hidden = false;
+  showSize();
+}
+function closeData(){
+  document.getElementById('datasheet').hidden = true;
+}
+
 function showSize(){
   const all  = JSON.stringify(DB).length;
   const slim = JSON.stringify({students:DB.students, records:DB.records, tags:[]}).length;
   const kb = n => (n/1024).toFixed(1) + 'KB';
-  document.getElementById('size-note').textContent =
-    `全部：約${kb(all)}（タグ${DB.tags.length}個を含む）／記録だけ：約${kb(slim)}`;
+  const txt = `記録${DB.records.length}件・タグ${DB.tags.length}個／全部 約${kb(all)}・記録だけ 約${kb(slim)}`;
+  const a = document.getElementById('size-note');
+  const b = document.getElementById('sheet-size');
+  if(a) a.textContent = txt;
+  if(b) b.textContent = txt;
 }
 
 function exportJSON(){

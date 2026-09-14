@@ -4,7 +4,7 @@
    2) 電波がなくても開けるようにする（授業中に圏外でも使えるように）
    アプリを更新したときは CACHE の数字を上げる。 */
 
-const CACHE = 'karte-v4';
+const CACHE = 'karte-v5';
 const ASSETS = [
   './',
   './index.html',
