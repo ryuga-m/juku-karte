@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>指導カルテ</title>
+<meta name="description" content="生徒の弱点を記録・分析し、次の対策を立てるための指導記録アプリ">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#16273D">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="カルテ">
 <style>
   :root{
     --bg:#E4E9ED;
@@ -162,6 +171,47 @@
   @keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
   .keybox{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}
 
+  /* タグ選択の小窓 */
+  .sheet-bg{
+    position:fixed;inset:0;background:rgba(22,39,61,.45);
+    z-index:50;display:flex;align-items:flex-end;justify-content:center;
+  }
+  .sheet-bg[hidden]{display:none}
+  .sheet{
+    background:var(--surface);width:100%;max-width:680px;
+    max-height:82vh;display:flex;flex-direction:column;
+    border-radius:10px 10px 0 0;border:1px solid var(--line);border-bottom:0;
+  }
+  .sheet .top{
+    padding:12px 14px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:10px;flex:none;
+  }
+  .sheet .top .h{font-size:14px;font-weight:600;flex:1}
+  .sheet .subj{
+    display:flex;gap:6px;overflow-x:auto;padding:10px 14px;
+    border-bottom:1px solid var(--line);flex:none;
+  }
+  .sheet .subj button{
+    appearance:none;font:inherit;font-size:13px;cursor:pointer;flex:none;
+    padding:6px 13px;border:1px solid var(--line);background:var(--surface);
+    color:var(--ink-2);border-radius:16px;
+  }
+  .sheet .subj button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+  .sheet .find{padding:10px 14px 0;flex:none}
+  .sheet .body{padding:12px 14px;overflow-y:auto;flex:1}
+  .sheet .foot{
+    padding:12px 14px;border-top:1px solid var(--line);flex:none;
+    display:flex;gap:8px;align-items:center;
+  }
+  .sheet .count{font-size:12px;color:var(--ink-2);flex:1}
+
+  .picked{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+  .picked .t{
+    font-size:12px;background:var(--ink);color:#fff;
+    border-radius:14px;padding:4px 11px;
+  }
+  .picked .none{font-size:12px;color:var(--ink-2)}
+
   .log{padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
   .log:last-child{border-bottom:0}
   .log .head{display:flex;gap:8px;align-items:baseline}
@@ -196,6 +246,11 @@
   <div class="wrap">
     <h1>指導カルテ</h1>
     <span class="sub">記録 → 分析 → 次の一手</span>
+    <button id="install" hidden onclick="doInstall()"
+      style="margin-left:auto;appearance:none;font:inherit;font-size:12px;cursor:pointer;
+             padding:5px 12px;border-radius:3px;border:1px solid #fff;background:none;color:#fff;flex:none">
+      アプリとして追加
+    </button>
   </div>
 </header>
 
@@ -235,12 +290,12 @@
       <label for="f-src">出典（どの問題か分かる目印）</label>
       <input type="text" id="f-src" placeholder="例：北大2019 大問2 (3) ／ ターゲット1900 p.42">
 
-      <label>分野タグ<span class="note" style="display:inline;margin-left:6px">複数選べます</span></label>
-      <div class="chips" id="f-tags"></div>
-      <div class="row" style="margin-top:8px">
-        <input type="text" id="f-newtag" placeholder="タグを追加" style="flex:1;min-width:140px;font-size:14px;padding:7px 9px">
-        <button class="btn ghost small" onclick="addTag()">追加</button>
+      <label>分野タグ</label>
+      <div class="row">
+        <button type="button" class="btn ghost small" onclick="openPicker('new')">タグを選ぶ</button>
+        <span class="note" id="f-tagcount"></span>
       </div>
+      <div class="picked" id="f-tags"></div>
 
       <label>採点</label>
       <div class="grade">
@@ -328,12 +383,30 @@
     <p class="note" style="margin:0 0 4px">保存先：<span id="store-where">確認中</span></p>
     <p class="note" style="margin:0 0 10px">JSONで書き出しておけば、消えても戻せます。別の端末に移すときも同じです。</p>
     <div class="row">
-      <button class="btn ghost small" onclick="exportJSON()">JSONで書き出す</button>
+      <button class="btn ghost small" onclick="exportJSON()">全部を書き出す</button>
+      <button class="btn ghost small" onclick="exportRecords()">記録だけ書き出す</button>
       <label class="btn ghost small" for="imp" style="display:inline-block">JSONから読み込む</label>
       <input type="file" id="imp" accept=".json,application/json" style="display:none" onchange="importJSON(this)">
       <button class="btn ghost small" onclick="exportCSV()">CSVで書き出す</button>
     </div>
+    <p class="note" id="size-note"></p>
     <p class="note" id="imp-msg" hidden></p>
+    <p class="note" id="dl-note" hidden style="color:var(--red)"></p>
+    <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;cursor:pointer">
+      <input type="checkbox" id="imp-replace" style="width:auto;margin-top:3px;flex:none">
+      <span>読み込むとき、分野タグを<strong>入れ替える</strong>（今あるタグを消して、読み込んだものだけにする）</span>
+    </label>
+
+    <div class="keybox">
+      <p class="note" style="margin:0 0 8px">ダウンロードできない環境では、文字をコピーして移せます。</p>
+      <div class="row">
+        <button class="btn ghost small" onclick="showText()">コピー用に表示</button>
+        <button class="btn ghost small" onclick="copyText()">コピーする</button>
+        <button class="btn ghost small" onclick="pasteLoad()">貼り付けた内容を読み込む</button>
+      </div>
+      <textarea id="xfer" placeholder="ここにJSONが出ます。別の端末では、ここに貼り付けてから読み込んでください。" style="margin-top:8px;min-height:120px;font-family:ui-monospace,monospace;font-size:12px"></textarea>
+      <p class="note" id="xfer-msg" hidden></p>
+    </div>
   </div>
 </section>
 
@@ -362,6 +435,28 @@
 </section>
 
 </main>
+
+<div class="sheet-bg" id="picker" hidden onclick="if(event.target===this)closePicker()">
+  <div class="sheet" role="dialog" aria-label="タグを選ぶ">
+    <div class="top">
+      <span class="h">タグを選ぶ</span>
+      <button class="btn ghost small" onclick="closePicker()">閉じる</button>
+    </div>
+    <div class="subj" id="pk-subj"></div>
+    <div class="find">
+      <input type="text" id="pk-find" placeholder="タグを探す・新しく作る" oninput="renderPicker()">
+    </div>
+    <div class="body">
+      <div class="chips" id="pk-list"></div>
+      <p class="note" id="pk-empty" hidden></p>
+    </div>
+    <div class="foot">
+      <span class="count" id="pk-count"></span>
+      <button class="btn ghost small" onclick="pickerAdd()">この名前で作る</button>
+      <button class="btn small" onclick="closePicker()">決定</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -501,20 +596,125 @@ function fillSelects(){
   });
 }
 
+/* ---------- タグ選択の小窓（階層をたどる） ---------- */
+let pk = { target:null, path:[] };
+
+function targetSet(){ return pk.target === 'edit' ? editState.tags : sel.tags; }
+
+/* タグ一覧から入れ子の木を組む。「英語:文法:時制」→ 英語 > 文法 > 時制 */
+function buildTree(){
+  const root = {};
+  DB.tags.forEach(t=>{
+    let node = root;
+    t.split(':').forEach(part=>{
+      node[part] = node[part] || {};
+      node = node[part];
+    });
+  });
+  return root;
+}
+function nodeAt(path){
+  let node = buildTree();
+  for(const p of path){ if(!node[p]) return {}; node = node[p]; }
+  return node;
+}
+
+function openPicker(which){
+  pk.target = which;
+  pk.path = [];
+  document.getElementById('pk-find').value = '';
+  document.getElementById('picker').hidden = false;
+  renderPicker();
+}
+function closePicker(){
+  document.getElementById('picker').hidden = true;
+  if(pk.target === 'edit') renderRecent(); else renderTags();
+  pk.target = null;
+}
+function pkGo(depth){ pk.path = pk.path.slice(0, depth); renderPicker(); }
+function pkInto(key){ pk.path = [...pk.path, key]; renderPicker(); }
+
+function renderPicker(){
+  const q = document.getElementById('pk-find').value.trim();
+  const set = targetSet();
+  const crumbEl = document.getElementById('pk-subj');
+  const listEl  = document.getElementById('pk-list');
+  const emptyEl = document.getElementById('pk-empty');
+
+  /* 検索中は階層を無視して全部から探す */
+  if(q){
+    crumbEl.innerHTML = `<button type="button" aria-pressed="true">「${esc(q)}」で検索中</button>`;
+    const hits = DB.tags.filter(t=>t.includes(q));
+    listEl.innerHTML = hits.map(t=>
+      `<button type="button" class="chip" aria-pressed="${set.has(t)}" onclick="pickToggle('${esc(t)}')">${esc(t)}</button>`
+    ).join('');
+    emptyEl.textContent = hits.length ? '' : `見つかりません。「この名前で作る」で追加できます。`;
+    emptyEl.hidden = !!hits.length;
+    showCount(set);
+    return;
+  }
+
+  /* 今いる場所への道しるべ */
+  const crumbs = ['<button type="button" aria-pressed="'+(pk.path.length===0)+'" onclick="pkGo(0)">科目</button>'];
+  pk.path.forEach((p,i)=>{
+    crumbs.push(`<button type="button" aria-pressed="${i===pk.path.length-1}" onclick="pkGo(${i+1})">${esc(p)}</button>`);
+  });
+  crumbEl.innerHTML = crumbs.join('');
+
+  const node = nodeAt(pk.path);
+  const keys = Object.keys(node);
+  const html = [];
+
+  /* 今の場所がそのままタグとして存在する場合（例：英語:発音・アクセント） */
+  const here = pk.path.join(':');
+  if(here && DB.tags.includes(here)){
+    html.push(`<button type="button" class="chip" aria-pressed="${set.has(here)}" onclick="pickToggle('${esc(here)}')">${esc(pk.path[pk.path.length-1])}（これを選ぶ）</button>`);
+  }
+
+  keys.forEach(k=>{
+    const full = [...pk.path, k].join(':');
+    const hasChild = Object.keys(node[k]).length > 0;
+    if(hasChild){
+      html.push(`<button type="button" class="chip" style="border-color:var(--ink);color:var(--ink)" onclick="pkInto('${esc(k)}')">${esc(k)} ›</button>`);
+    }else{
+      html.push(`<button type="button" class="chip" aria-pressed="${set.has(full)}" onclick="pickToggle('${esc(full)}')">${esc(k)}</button>`);
+    }
+  });
+
+  listEl.innerHTML = html.join('');
+  emptyEl.textContent = keys.length ? '' : 'ここには何もありません。';
+  emptyEl.hidden = !!keys.length;
+  showCount(set);
+}
+function showCount(set){
+  const picked = [...set];
+  document.getElementById('pk-count').textContent = picked.length ? `選択中：${picked.join('・')}` : '選択なし';
+}
+function pickToggle(t){
+  const set = targetSet();
+  set.has(t) ? set.delete(t) : set.add(t);
+  renderPicker();
+}
+
+/* 検索欄の文字で新しいタグを作る。階層の途中なら、その下に作る */
+async function pickerAdd(){
+  const v = document.getElementById('pk-find').value.trim();
+  if(!v){ toast('作りたい名前を入れてください'); return; }
+  const full = v.includes(':') || !pk.path.length ? v : [...pk.path, v].join(':');
+  if(!DB.tags.includes(full)) DB.tags.push(full);
+  targetSet().add(full);
+  document.getElementById('pk-find').value = '';
+  await save(); renderPicker(); renderTagAdmin();
+  toast(full + ' を追加しました');
+}
+
 /* ---------- 記録 ---------- */
 function renderTags(){
-  document.getElementById('f-tags').innerHTML = DB.tags.map(t=>
-    `<button type="button" class="chip" aria-pressed="${sel.tags.has(t)}" onclick="toggleTag('${esc(t)}')">${esc(t)}</button>`
-  ).join('');
-}
-function toggleTag(t){ sel.tags.has(t) ? sel.tags.delete(t) : sel.tags.add(t); renderTags(); }
-async function addTag(){
-  const v = document.getElementById('f-newtag').value.trim();
-  if(!v) return;
-  if(!DB.tags.includes(v)) DB.tags.push(v);
-  sel.tags.add(v);
-  document.getElementById('f-newtag').value='';
-  await save(); renderTags(); renderTagAdmin();
+  const picked = [...sel.tags];
+  document.getElementById('f-tags').innerHTML = picked.length
+    ? picked.map(t=>`<span class="t">${esc(t)}</span>`).join('')
+    : '<span class="none">まだ選んでいません</span>';
+  document.getElementById('f-tagcount').textContent = picked.length ? `${picked.length}個` : '';
 }
 function setGrade(ok){
   sel.correct = ok;
@@ -579,7 +779,10 @@ function renderRecent(){
 
 function recordEditor(r){
   const stuOpts = DB.students.map(s=>`<option value="${s.id}"${s.id===r.sid?' selected':''}>${esc(s.name)}</option>`).join('');
-  const chips = DB.tags.map(t=>`<button type="button" class="chip" aria-pressed="${editState.tags.has(t)}" onclick="toggleEditTag('${esc(t)}')">${esc(t)}</button>`).join('');
+  const picked = [...editState.tags];
+  const tagView = picked.length
+    ? picked.map(t=>`<span class="t">${esc(t)}</span>`).join('')
+    : '<span class="none">まだ選んでいません</span>';
   const reasonOpts = REASONS.map(x=>`<option${x===r.reason?' selected':''}>${x}</option>`).join('');
   return `<div class="editing">
     <div class="ttl">この記録を直す</div>
@@ -590,7 +793,10 @@ function recordEditor(r){
     <label for="er-src">出典</label>
     <input type="text" id="er-src" value="${esc(r.src||'')}">
     <label>分野タグ</label>
-    <div class="chips">${chips}</div>
+    <div class="row">
+      <button type="button" class="btn ghost small" onclick="openPicker('edit')">タグを選ぶ</button>
+    </div>
+    <div class="picked">${tagView}</div>
     <label>採点</label>
     <div class="grade">
       <button type="button" class="ok" aria-pressed="${editState.correct===true}" onclick="setEditGrade(true)">正解</button>
@@ -619,7 +825,7 @@ function startEditRec(id){
 }
 function toggleEditTag(t){
   editState.tags.has(t) ? editState.tags.delete(t) : editState.tags.add(t);
-  syncEditor();
+  renderRecent();
 }
 function setEditGrade(ok){ editState.correct = ok; syncEditor(); }
 
@@ -911,9 +1117,115 @@ function exportCSV(){
     const s = DB.students.find(x=>x.id===r.sid);
     rows.push([r.date, s?s.name:'', r.src, r.tags.join('・'), r.correct?'○':'×', r.reason, r.memo].map(q).join(','));
   });
-  dl('karte.csv', '\uFEFF'+rows.join('\n'), 'text/csv;charset=utf-8');
+  handout('karte.csv', '\uFEFF'+rows.join('\n'), 'text/csv;charset=utf-8', 'CSV');
 }
-function exportJSON(){ dl('karte-'+new Date().toISOString().slice(0,10)+'.json', JSON.stringify(DB,null,2), 'application/json'); }
+/* ダウンロードが使える環境かを判定する（Claude内や埋め込み表示では使えない） */
+function canDownload(){
+  if(hasCloud) return false;                    // Claude内で動いている
+  try{ if(window.self !== window.top) return false; }catch(e){ return false; } // 枠の中に埋め込まれている
+  return true;
+}
+
+/* 書き出しの受け皿。ダウンロードが無理なら文字に逃がす */
+function handout(name, text, type, label){
+  if(canDownload()){
+    try{ dl(name, text, type); return; }catch(e){ /* 下の文字方式に落ちる */ }
+  }
+  const ta = document.getElementById('xfer');
+  const m  = document.getElementById('xfer-msg');
+  ta.value = text;
+  m.textContent = 'この画面ではファイルを保存できないため、下の欄に' + label + 'を出しました。コピーして持ち出してください。';
+  m.hidden = false;
+  navigator.clipboard.writeText(text).then(
+    ()=>{ m.textContent = 'ファイル保存が使えないため、' + label + 'をコピーしました。貼り付け先へ移してください。'; },
+    ()=>{ ta.focus(); ta.select(); }
+  );
+  ta.scrollIntoView({block:'center', behavior:'smooth'});
+  toast('文字で書き出しました');
+}
+
+/* 読み込みの共通処理。生徒と記録は足すだけ、タグは設定次第で入れ替える */
+async function mergeIn(inc){
+  if(!inc || !Array.isArray(inc.records) || !Array.isArray(inc.students)) throw new Error('形式が違います');
+  const replace = document.getElementById('imp-replace').checked;
+
+  const sIds = new Set(DB.students.map(s=>s.id));
+  const rIds = new Set(DB.records.map(r=>r.id));
+  let ns=0, nr=0;
+  inc.students.forEach(s=>{ if(!sIds.has(s.id)){ DB.students.push(s); ns++; } });
+  inc.records.forEach(r=>{ if(!rIds.has(r.id)){ DB.records.push(r); nr++; } });
+
+  let msg;
+  if(replace && Array.isArray(inc.tags) && inc.tags.length){
+    const before = DB.tags.length;
+    /* 記録で実際に使われているタグは、消すと履歴が読めなくなるので残す */
+    const inUse = new Set();
+    DB.records.forEach(r=>r.tags.forEach(t=>inUse.add(t)));
+    const kept = [...inUse].filter(t=>!inc.tags.includes(t));
+    DB.tags = [...inc.tags, ...kept];
+    msg = `タグを入れ替えました（${before}個 → ${DB.tags.length}個`
+        + (kept.length ? `、うち記録で使用中の${kept.length}個は残しました` : '')
+        + `）。`;
+  }else{
+    (inc.tags||[]).forEach(t=>{ if(!DB.tags.includes(t)) DB.tags.push(t); });
+    msg = '';
+  }
+
+  DB.records.sort((a,b)=> (a.date||'').localeCompare(b.date||''));
+  await save();
+  renderStudents(); fillSelects(); renderTags(); renderRecent(); renderTagAdmin(); showSize();
+  return `読み込みました。生徒 ${ns} 人、記録 ${nr} 件を足しました。` + (msg ? ' ' + msg : '');
+}
+
+/* ダウンロードが使えない環境向け：文字でやり取りする */
+function showText(){
+  document.getElementById('xfer').value = JSON.stringify(DB);
+  const m = document.getElementById('xfer-msg');
+  m.textContent = '全部選んでコピーし、移したい端末の同じ欄に貼り付けてください。';
+  m.hidden = false;
+}
+function copyText(){
+  const ta = document.getElementById('xfer');
+  if(!ta.value.trim()) showText();
+  const m = document.getElementById('xfer-msg');
+  navigator.clipboard.writeText(ta.value).then(
+    ()=>{ m.textContent = 'コピーしました。'; m.hidden = false; },
+    ()=>{ ta.select(); m.textContent = '選択しました。長押しかCtrl+Cでコピーしてください。'; m.hidden = false; }
+  );
+}
+async function pasteLoad(){
+  const m = document.getElementById('xfer-msg');
+  const raw = document.getElementById('xfer').value.trim();
+  if(!raw){ m.textContent = '先に欄へ貼り付けてください。'; m.hidden = false; return; }
+  try{
+    m.textContent = await mergeIn(JSON.parse(raw));
+    m.hidden = false;
+    document.getElementById('xfer').value = '';
+    toast('読み込みました');
+  }catch(e){
+    m.textContent = '読み込めませんでした。{ で始まって } で終わる文字が全部入っているか確かめてください。';
+    m.hidden = false;
+  }
+}
+
+/* 日々のやり取りはこちら。タグを外すと量が一桁減る */
+function exportRecords(){
+  const slim = { students: DB.students, records: DB.records, tags: [] };
+  handout('karte-records-'+new Date().toISOString().slice(0,10)+'.json',
+          JSON.stringify(slim), 'application/json', '記録データ');
+}
+
+function showSize(){
+  const all  = JSON.stringify(DB).length;
+  const slim = JSON.stringify({students:DB.students, records:DB.records, tags:[]}).length;
+  const kb = n => (n/1024).toFixed(1) + 'KB';
+  document.getElementById('size-note').textContent =
+    `全部：約${kb(all)}（タグ${DB.tags.length}個を含む）／記録だけ：約${kb(slim)}`;
+}
+
+function exportJSON(){
+  handout('karte-'+new Date().toISOString().slice(0,10)+'.json', JSON.stringify(DB,null,2), 'application/json', 'JSON');
+}
 
 /* 読み込みは「足す」方式。同じ記録は重複させない */
 function importJSON(input){
@@ -923,20 +1235,7 @@ function importJSON(input){
   const fr = new FileReader();
   fr.onload = async ()=>{
     try{
-      const inc = JSON.parse(fr.result);
-      if(!inc || !Array.isArray(inc.records) || !Array.isArray(inc.students)) throw new Error('形式が違います');
-
-      const sIds = new Set(DB.students.map(s=>s.id));
-      const rIds = new Set(DB.records.map(r=>r.id));
-      let ns=0, nr=0;
-      inc.students.forEach(s=>{ if(!sIds.has(s.id)){ DB.students.push(s); ns++; } });
-      inc.records.forEach(r=>{ if(!rIds.has(r.id)){ DB.records.push(r); nr++; } });
-      (inc.tags||[]).forEach(t=>{ if(!DB.tags.includes(t)) DB.tags.push(t); });
-      DB.records.sort((a,b)=> (a.date||'').localeCompare(b.date||''));
-
-      await save();
-      renderStudents(); fillSelects(); renderTags(); renderRecent(); renderTagAdmin();
-      msg.textContent = `読み込みました。生徒 ${ns} 人、記録 ${nr} 件を足しました。`;
+      msg.textContent = await mergeIn(JSON.parse(fr.result));
       msg.hidden = false;
       toast('読み込みました');
     }catch(e){
@@ -948,6 +1247,33 @@ function importJSON(input){
   fr.onerror = ()=>{ msg.textContent='ファイルを開けませんでした。'; msg.hidden=false; };
   fr.readAsText(file);
 }
+
+/* ---------- アプリとして入れられるようにする ---------- */
+if('serviceWorker' in navigator && location.protocol === 'https:'){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+
+/* Chromeが「入れられます」と言ってきたらボタンを出す */
+let installEvent = null;
+window.addEventListener('beforeinstallprompt', e=>{
+  e.preventDefault();
+  installEvent = e;
+  const b = document.getElementById('install');
+  if(b) b.hidden = false;
+});
+async function doInstall(){
+  if(!installEvent) return;
+  installEvent.prompt();
+  await installEvent.userChoice;
+  installEvent = null;
+  document.getElementById('install').hidden = true;
+}
+window.addEventListener('appinstalled', ()=>{
+  const b = document.getElementById('install');
+  if(b) b.hidden = true;
+});
 
 /* ---------- 起動 ---------- */
 (async function init(){
@@ -963,7 +1289,11 @@ function importJSON(input){
     try{ localStorage.setItem('__t','1'); localStorage.removeItem('__t'); ok = true; }catch(e){}
     w.textContent = ok ? 'この端末のブラウザ（閉じても残ります）' : 'この端末に保存できません。書き出しで控えを取ってください';
   }
-  renderStudents(); fillSelects(); renderTags(); renderRecent(); renderTagAdmin();
+  if(!canDownload()){
+    document.getElementById('dl-note').textContent = 'この画面ではファイル保存が使えないため、書き出すと下の欄に文字で出ます。';
+    document.getElementById('dl-note').hidden = false;
+  }
+  renderStudents(); fillSelects(); renderTags(); renderRecent(); renderTagAdmin(); showSize();
 })();
 </script>
 </body>
