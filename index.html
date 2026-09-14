@@ -286,6 +286,12 @@
 
 <!-- ============ 記録 ============ -->
 <section id="p-rec" class="panel">
+  <div class="card" id="firstrun" hidden>
+    <h2>はじめに、担当科目を選んでください</h2>
+    <p class="note" style="margin:0 0 12px">分野タグがまだ入っていません。担当する科目のパックを追加すると、記録を始められます。使わない科目は入れなくて構いません。</p>
+    <button class="btn" style="width:100%" onclick="openPacks()">科目パックを追加</button>
+  </div>
+
   <div class="warn">問題文そのものは保存しません。出典と分野タグだけを残します。</div>
 
   <div class="card">
@@ -432,6 +438,7 @@
   </div>
   <div class="card">
     <h2>分野タグの管理</h2>
+    <button class="btn" style="width:100%;margin-bottom:12px" onclick="openPacks()">科目パックを追加</button>
     <p class="note" style="margin:0 0 10px">名前を変えると、過去の記録のタグもまとめて書き換わります。</p>
     <div class="taglist" id="tag-admin"></div>
   </div>
@@ -457,6 +464,25 @@
       <span class="count" id="pk-count"></span>
       <button class="btn ghost small" onclick="pickerAdd()">この名前で作る</button>
       <button class="btn small" onclick="closePicker()">決定</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-bg" id="packsheet" hidden onclick="if(event.target===this)closePacks()">
+  <div class="sheet" role="dialog" aria-label="科目パックを追加">
+    <div class="top">
+      <span class="h">科目パックを追加</span>
+      <button class="btn ghost small" onclick="closePacks()">閉じる</button>
+    </div>
+    <div class="find">
+      <p class="note" style="margin:0">担当する科目だけ選べます。あとから足したり消したりできます。</p>
+    </div>
+    <div class="body">
+      <div id="pack-list"></div>
+    </div>
+    <div class="foot">
+      <span class="count" id="pack-count"></span>
+      <button class="btn small" onclick="applyPacks()">追加する</button>
     </div>
   </div>
 </div>
@@ -529,10 +555,34 @@ async function save(){
 }
 
 /* ---------- データ ---------- */
-const DEFAULT_TAGS = ['単語・熟語','無生物主語','名詞構文','代名詞','関係詞','時制','長文読解','和訳','英作文','リスニング'];
-/* つまずいた理由。科目を問わず使えるように、
-   「何が足りなかったか」で分けている。対策が1つずつ違う。 */
-const REASONS = [
+/* ---------- 型（データの決まり） ----------
+   schema … データ構造の版。将来この形を変えるとき、
+            古いデータを読み分けるために使う。
+   students / records / tags / reasons の4つだけで完結する。 */
+const SCHEMA = 1;
+
+/* 科目パック。使う科目だけ入れられるようにしてある。
+   1つ選ぶと、その科目のタグがまとめて追加される。 */
+const PACKS = {
+  '国語': ['国語:漢字・語彙:漢字の読み','国語:漢字・語彙:漢字の書き','国語:漢字・語彙:熟語・四字熟語','国語:漢字・語彙:慣用句・ことわざ','国語:漢字・語彙:語彙力不足','国語:文法:文節・品詞','国語:文法:助詞・助動詞','国語:文法:文の成分','国語:文法:敬語','国語:説明的文章:指示語','国語:説明的文章:接続語','国語:説明的文章:段落関係','国語:説明的文章:対比の把握','国語:説明的文章:要旨把握','国語:説明的文章:筆者の主張','国語:文学的文章:心情読解','国語:文学的文章:情景描写','国語:文学的文章:表現技法','国語:文学的文章:人物関係','国語:古文:古文単語','国語:古文:助動詞','国語:古文:敬語・主語判別','国語:古文:和歌・文学史','国語:漢文:句形','国語:漢文:訓読・書き下し','国語:漢文:漢詩','国語:記述・作文:設問条件の充足','国語:記述・作文:根拠の示し方','国語:記述・作文:字数調整','国語:記述・作文:構成'],
+  '数学': ['数学:数と式:計算の正確さ','数学:数と式:式変形','数学:数と式:因数分解','数学:数と式:平方根','数学:数と式:絶対値','数学:方程式・不等式:二次方程式','数学:方程式・不等式:連立方程式','数学:方程式・不等式:不等式の処理','数学:関数:一次関数','数学:関数:二次関数','数学:関数:グラフが描けない','数学:関数:最大・最小','数学:関数:指数・対数','数学:関数:三角関数','数学:図形:平面図形','数学:図形:空間図形','数学:図形:三角比','数学:図形:合同・相似','数学:図形:円の性質','数学:図形:作図','数学:場合の数・確率:数え上げ','数学:場合の数・確率:順列・組合せ','数学:場合の数・確率:確率の設定','数学:場合の数・確率:条件付き確率','数学:数列:等差・等比','数学:数列:シグマ計算','数学:数列:漸化式','数学:数列:数学的帰納法','数学:ベクトル:成分計算','数学:ベクトル:内積','数学:ベクトル:空間ベクトル','数学:微分:微分の計算','数学:微分:接線','数学:微分:増減・極値','数学:積分:積分の計算','数学:積分:面積','数学:積分:体積','数学:データの分析:代表値','数学:データの分析:分散・標準偏差','数学:データの分析:相関','数学:解答プロセス:方針が立たない','数学:解答プロセス:途中で詰まる','数学:解答プロセス:答案の書き方','数学:解答プロセス:検算不足'],
+  '英語': ['英語:単語・熟語:単語不足','英語:単語・熟語:熟語・イディオム','英語:単語・熟語:多義語','英語:単語・熟語:つづり','英語:文法:時制','英語:文法:助動詞','英語:文法:受動態','英語:文法:不定詞','英語:文法:分詞','英語:文法:動名詞','英語:文法:関係詞','英語:文法:仮定法','英語:文法:比較','英語:文法:冠詞・前置詞','英語:構文:SVOC把握','英語:構文:無生物主語','英語:構文:名詞構文','英語:構文:倒置・強調','英語:構文:省略','英語:代名詞:指示対象の追跡','英語:代名詞:itの用法','英語:代名詞:oneとthat','英語:長文:内容一致','英語:長文:空所補充','英語:長文:段落整序','英語:長文:下線部説明','英語:長文:語句の言い換え','英語:和訳:直訳から自然訳','英語:和訳:構造の反映','英語:和訳:語彙選択','英語:英作文:和文英訳','英語:英作文:自由英作','英語:英作文:文法ミス','英語:英作文:論理構成','英語:リスニング:音の連結','英語:リスニング:数値・固有名詞','英語:リスニング:設問先読み','英語:発音・アクセント'],
+  '物理': ['物理:力学:力の図示','物理:力学:運動方程式','物理:力学:エネルギー保存','物理:力学:運動量','物理:力学:円運動・単振動','物理:熱:熱量計算','物理:熱:気体の状態変化','物理:熱:熱力学第一法則','物理:波動:波の基本式','物理:波動:音','物理:波動:光の干渉','物理:波動:レンズ','物理:電磁気:回路計算','物理:電磁気:電場・電位','物理:電磁気:コンデンサー','物理:電磁気:電磁誘導','物理:電磁気:交流','物理:原子:光電効果','物理:原子:原子核','物理:解き方:公式の使い分け','物理:解き方:立式','物理:解き方:図・作図','物理:解き方:単位・有効数字'],
+  '化学': ['化学:理論:物質量(mol)','化学:理論:濃度計算','化学:理論:気体の法則','化学:理論:反応熱','化学:理論:化学平衡','化学:理論:反応速度','化学:酸塩基:pH計算','化学:酸塩基:中和滴定','化学:酸塩基:滴定曲線','化学:酸化還元:酸化数','化学:酸化還元:電池','化学:酸化還元:電気分解','化学:無機:気体の製法','化学:無機:金属イオン','化学:無機:系統分析','化学:有機:官能基','化学:有機:異性体','化学:有機:反応経路','化学:有機:構造決定','化学:高分子:糖・アミノ酸','化学:高分子:合成高分子','化学:解き方:化学反応式','化学:解き方:暗記不足','化学:解き方:計算ミス'],
+  '生物': ['生物:細胞・代謝:細胞構造','生物:細胞・代謝:酵素','生物:細胞・代謝:呼吸・光合成','生物:遺伝:DNA複製','生物:遺伝:転写・翻訳','生物:遺伝:遺伝の計算','生物:体内環境:恒常性','生物:体内環境:免疫','生物:体内環境:神経・筋肉','生物:生態・進化:個体群','生物:生態・進化:生態系','生物:生態・進化:進化・系統','生物:解き方:用語の暗記','生物:解き方:考察問題'],
+  '地学': ['地学:地球:内部構造','地学:地球:地震','地学:地球:火山','地学:地球:地層・化石','地学:大気・海洋:大気の構造','地学:大気・海洋:天気','地学:大気・海洋:海流','地学:宇宙:太陽系','地学:宇宙:恒星','地学:宇宙:宇宙の構造'],
+  '社会': ['社会:地理:地形','社会:地理:気候','社会:地理:自然災害','社会:地理:農業','社会:地理:工業','社会:地理:人口・都市','社会:地理:地形図読図','社会:地理:統計資料','社会:地理:世界の諸地域','社会:日本史:古代・中世','社会:日本史:近世','社会:日本史:近代','社会:日本史:現代','社会:世界史:古代・中世','社会:世界史:近世','社会:世界史:近代','社会:世界史:現代','社会:公民:憲法','社会:公民:三権のしくみ','社会:公民:選挙・政党','社会:公民:地方自治','社会:公民:市場機構','社会:公民:財政・金融','社会:公民:労働','社会:公民:社会保障','社会:公民:国際政治','社会:公民:国際経済','社会:公民:倫理・思想','社会:歴史の捉え方:年代・順序','社会:歴史の捉え方:因果関係','社会:歴史の捉え方:用語の暗記','社会:歴史の捉え方:資料読解'],
+  '中学国語': ['中学国語:漢字・語句:漢字の読み','中学国語:漢字・語句:漢字の書き','中学国語:漢字・語句:熟語の構成','中学国語:漢字・語句:慣用句・ことわざ','中学国語:漢字・語句:語彙力不足','中学国語:文法:文節・文の成分','中学国語:文法:品詞の識別','中学国語:文法:用言の活用','中学国語:文法:助詞・助動詞','中学国語:文法:敬語','中学国語:説明文・論説文:指示語','中学国語:説明文・論説文:接続語','中学国語:説明文・論説文:段落関係','中学国語:説明文・論説文:キーワード把握','中学国語:説明文・論説文:要旨・主張','中学国語:説明文・論説文:設問条件の読み取り','中学国語:小説・随筆:心情読解','中学国語:小説・随筆:情景描写','中学国語:小説・随筆:人物関係','中学国語:小説・随筆:表現技法','中学国語:詩歌:詩','中学国語:詩歌:短歌・俳句','中学国語:古文:歴史的仮名遣い','中学国語:古文:古文単語','中学国語:古文:主語の判別','中学国語:古文:内容理解','中学国語:漢文:訓読・書き下し','中学国語:漢文:返り点','中学国語:漢文:漢詩','中学国語:記述・作文:字数調整','中学国語:記述・作文:根拠の示し方','中学国語:記述・作文:文のねじれ','中学国語:記述・作文:構成'],
+  '中学数学': ['中学数学:1年:正負の数','中学数学:1年:文字と式','中学数学:1年:一次方程式','中学数学:1年:比例・反比例','中学数学:1年:平面図形','中学数学:1年:空間図形','中学数学:1年:データの分布','中学数学:2年:式の計算','中学数学:2年:連立方程式','中学数学:2年:一次関数','中学数学:2年:平行と合同','中学数学:2年:三角形と四角形','中学数学:2年:確率','中学数学:3年:展開・因数分解','中学数学:3年:平方根','中学数学:3年:二次方程式','中学数学:3年:二次関数(y=ax²)','中学数学:3年:相似','中学数学:3年:円の性質','中学数学:3年:三平方の定理','中学数学:3年:標本調査','中学数学:解き方:計算の正確さ','中学数学:解き方:文章題の立式','中学数学:解き方:図が描けない','中学数学:解き方:途中式を書かない','中学数学:解き方:検算不足'],
+  '中学英語': ['中学英語:単語:単語不足','中学英語:単語:つづり','中学英語:単語:不規則動詞','中学英語:文法:be動詞','中学英語:文法:一般動詞','中学英語:文法:三単現のs','中学英語:文法:名詞の複数形','中学英語:文法:代名詞','中学英語:文法:疑問詞','中学英語:文法:現在進行形','中学英語:文法:過去形','中学英語:文法:未来表現','中学英語:文法:助動詞','中学英語:文法:不定詞','中学英語:文法:動名詞','中学英語:文法:比較','中学英語:文法:受動態','中学英語:文法:現在完了','中学英語:文法:関係代名詞','中学英語:文法:分詞の修飾','中学英語:文法:間接疑問','中学英語:文法:語順','中学英語:読解:内容理解','中学英語:読解:指示語','中学英語:読解:対話文','中学英語:表現:英作文','中学英語:表現:並べかえ','中学英語:表現:リスニング','中学英語:表現:発音・アクセント'],
+  '中学理科': ['中学理科:1年:光の性質','中学理科:1年:音の性質','中学理科:1年:力とばね','中学理科:1年:身のまわりの物質','中学理科:1年:状態変化','中学理科:1年:水溶液','中学理科:1年:植物の世界','中学理科:1年:火山と岩石','中学理科:1年:地震','中学理科:1年:地層と化石','中学理科:2年:電流と回路','中学理科:2年:電流と磁界','中学理科:2年:静電気','中学理科:2年:化学変化と原子・分子','中学理科:2年:化学反応式','中学理科:2年:酸化・還元','中学理科:2年:化学変化と熱','中学理科:2年:動物の体のしくみ','中学理科:2年:動物の分類','中学理科:2年:気象と天気の変化','中学理科:3年:運動と速さ','中学理科:3年:力のつり合い','中学理科:3年:仕事とエネルギー','中学理科:3年:水溶液とイオン','中学理科:3年:酸・アルカリと中和','中学理科:3年:電池','中学理科:3年:生命の連続性','中学理科:3年:遺伝','中学理科:3年:地球と宇宙','中学理科:3年:自然と人間','中学理科:解き方:計算問題','中学理科:解き方:グラフの読み取り','中学理科:解き方:実験器具・操作','中学理科:解き方:記述で答える問題','中学理科:解き方:用語の暗記'],
+  '中学社会': ['中学社会:地理:世界の姿','中学社会:地理:日本の姿','中学社会:地理:地形図の読み取り','中学社会:地理:気候と人々の生活','中学社会:地理:世界の諸地域','中学社会:地理:日本の諸地域','中学社会:地理:産業','中学社会:歴史:古代','中学社会:歴史:中世','中学社会:歴史:近世','中学社会:歴史:近代','中学社会:歴史:現代','中学社会:公民:憲法と人権','中学社会:公民:政治のしくみ','中学社会:公民:経済のしくみ','中学社会:公民:国際社会','中学社会:解き方:年代・順序','中学社会:解き方:因果関係','中学社会:解き方:用語の暗記','中学社会:解き方:資料・グラフ読解'],
+  '共通': ['共通:基礎の抜け','共通:問題文の読み違え','共通:計算・転記ミス','共通:時間配分','共通:見直し不足','共通:記述の詰め','共通:過去問']
+};
+
+/* つまずいた理由の初期値。科目を問わず使える8つ。
+   利用者が増やせるよう、データ側（DB.reasons）に持たせている。 */
+const DEFAULT_REASONS = [
   '用語・知識を覚えていない',
   'ルールや公式を使いこなせない',
   '問題文の条件を読み落とした',
@@ -543,7 +593,8 @@ const REASONS = [
   '手をつけられなかった'
 ];
 
-let DB = { students:[], records:[], tags:[...DEFAULT_TAGS] };
+
+let DB = { schema:SCHEMA, students:[], records:[], tags:[], reasons:[...DEFAULT_REASONS] };
 let sel = { tags:new Set(), correct:null };
 
 /* ---------- 画面切替 ---------- */
@@ -906,7 +957,7 @@ function recordEditor(r){
   const tagView = picked.length
     ? picked.map(t=>`<span class="t">${esc(t)}</span>`).join('')
     : '<span class="none">まだ選んでいません</span>';
-  const reasonOpts = REASONS.map(x=>`<option${x===r.reason?' selected':''}>${x}</option>`).join('');
+  const reasonOpts = DB.reasons.map(x=>`<option${x===r.reason?' selected':''}>${x}</option>`).join('');
   return `<div class="editing">
     <div class="ttl">この記録を直す</div>
     <label for="er-stu">生徒</label>
@@ -1327,8 +1378,11 @@ async function mergeIn(inc){
   }
 
   DB.records.sort((a,b)=> (a.date||'').localeCompare(b.date||''));
+  if(Array.isArray(inc.reasons) && inc.reasons.length) DB.reasons = inc.reasons;
+  DB.schema = SCHEMA;
   await save();
-  renderStudents(); fillSelects(); renderTags(); renderRecent(); renderTagAdmin(); showSize();
+  document.getElementById('f-reason').innerHTML = DB.reasons.map(r=>`<option>${r}</option>`).join('');
+  renderStudents(); fillSelects(); renderTags(); renderRecent(); renderTagAdmin(); showSize(); checkFirstRun();
   return `読み込みました。生徒 ${ns} 人、記録 ${nr} 件を足しました。` + (msg ? ' ' + msg : '');
 }
 
@@ -1368,6 +1422,57 @@ function exportRecords(){
   const slim = { students: DB.students, records: DB.records, tags: [] };
   handout('karte-records-'+new Date().toISOString().slice(0,10)+'.json',
           JSON.stringify(slim), 'application/json', '記録データ');
+}
+
+/* ---------- 科目パック ---------- */
+let packPick = new Set();
+
+function openPacks(){
+  packPick = new Set();
+  document.getElementById('packsheet').hidden = false;
+  renderPacks();
+}
+function closePacks(){ document.getElementById('packsheet').hidden = true; }
+
+function renderPacks(){
+  const el = document.getElementById('pack-list');
+  el.innerHTML = Object.keys(PACKS).map(k=>{
+    const have = PACKS[k].filter(t=>DB.tags.includes(t)).length;
+    const all  = PACKS[k].length;
+    const done = have === all;
+    const state = done ? `<span style="color:var(--green);font-size:12px">入っています</span>`
+                : have ? `<span style="color:var(--amber);font-size:12px">${have}/${all}個</span>`
+                : `<span style="color:var(--ink-2);font-size:12px">${all}個</span>`;
+    return `<label style="display:flex;align-items:center;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line);cursor:${done?'default':'pointer'}">
+      <input type="checkbox" ${done?'disabled':''} ${packPick.has(k)?'checked':''}
+        onchange="togglePack('${esc(k)}')" style="width:auto;flex:none">
+      <span style="flex:1;font-size:14px">${esc(k)}</span>
+      ${state}
+    </label>`;
+  }).join('');
+  const n = [...packPick].reduce((a,k)=>a + PACKS[k].filter(t=>!DB.tags.includes(t)).length, 0);
+  document.getElementById('pack-count').textContent =
+    packPick.size ? `${packPick.size}科目・${n}個を追加します` : '科目を選んでください';
+}
+function togglePack(k){
+  packPick.has(k) ? packPick.delete(k) : packPick.add(k);
+  renderPacks();
+}
+async function applyPacks(){
+  if(!packPick.size){ toast('科目を選んでください'); return; }
+  let n = 0;
+  packPick.forEach(k=>PACKS[k].forEach(t=>{ if(!DB.tags.includes(t)){ DB.tags.push(t); n++; } }));
+  await save();
+  renderTagAdmin(); renderTags(); showSize(); checkFirstRun();
+  closePacks();
+  toast(`${n}個のタグを追加しました`);
+}
+
+/* タグが空のあいだは、記録画面から設定へ案内する */
+function checkFirstRun(){
+  const el = document.getElementById('firstrun');
+  if(!el) return;
+  el.hidden = DB.tags.length > 0;
 }
 
 /* ---------- データ小窓 ---------- */
@@ -1445,9 +1550,15 @@ window.addEventListener('appinstalled', ()=>{
 /* ---------- 起動 ---------- */
 (async function init(){
   const saved = await load();
-  if(saved){ DB = Object.assign(DB, saved); if(!DB.tags||!DB.tags.length) DB.tags=[...DEFAULT_TAGS]; }
+  if(saved){
+    DB = Object.assign(DB, saved);
+    /* 古い版のデータには reasons / schema がないので補う */
+    if(!Array.isArray(DB.reasons) || !DB.reasons.length) DB.reasons = [...DEFAULT_REASONS];
+    if(!Array.isArray(DB.tags)) DB.tags = [];
+    DB.schema = SCHEMA;
+  }
   document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
-  document.getElementById('f-reason').innerHTML = REASONS.map(r=>`<option>${r}</option>`).join('');
+  document.getElementById('f-reason').innerHTML = DB.reasons.map(r=>`<option>${r}</option>`).join('');
   document.getElementById('apikey').value = loadKey();
   const w = document.getElementById('store-where');
   if(hasCloud){ w.textContent = 'Claude内（この会話に紐づきます）'; }
@@ -1466,7 +1577,7 @@ window.addEventListener('appinstalled', ()=>{
     n.textContent = 'AIで読み取るには、「AIに相談」タブの一番下でAPIキーの設定が必要です。手入力なら設定なしで使えます。';
     n.hidden = false;
   }
-  renderStudents(); fillSelects(); renderTags(); renderRecent(); renderTagAdmin(); showSize();
+  renderStudents(); fillSelects(); renderTags(); renderRecent(); renderTagAdmin(); showSize(); checkFirstRun();
 })();
 </script>
 </body>
