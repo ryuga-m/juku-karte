@@ -504,7 +504,18 @@ async function save(){
 
 /* ---------- データ ---------- */
 const DEFAULT_TAGS = ['単語・熟語','無生物主語','名詞構文','代名詞','関係詞','時制','長文読解','和訳','英作文','リスニング'];
-const REASONS = ['単語・熟語を知らない','文法の理解不足','構文の取り違え','内容の読み違え','ケアレスミス','時間切れ','手つかず'];
+/* つまずいた理由。科目を問わず使えるように、
+   「何が足りなかったか」で分けている。対策が1つずつ違う。 */
+const REASONS = [
+  '用語・知識を覚えていない',
+  'ルールや公式を使いこなせない',
+  '問題文の条件を読み落とした',
+  '解き方の方針が立たなかった',
+  '途中の処理でミスした',
+  '答え方が条件に合っていない',
+  '時間が足りなかった',
+  '手をつけられなかった'
+];
 
 let DB = { students:[], records:[], tags:[...DEFAULT_TAGS] };
 let sel = { tags:new Set(), correct:null };
@@ -1048,17 +1059,41 @@ function shrink(file, max=1200){
 
 async function callClaude(content){
   const key = loadKey();
+
+  /* Claudeの中ではキーなしで通る。それ以外の場所ではキーが必要 */
+  if(!key && !hasCloud){
+    throw new Error('APIキーが未設定です。このタブの一番下にある欄にキーを入れてください。キーなしでも記録・分析・編集は使えます。');
+  }
+
   const headers = { 'Content-Type':'application/json' };
   if(key){
     headers['x-api-key'] = key;
     headers['anthropic-version'] = '2023-06-01';
     headers['anthropic-dangerous-direct-browser-access'] = 'true';
   }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST', headers,
-    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1000, messages:[{role:'user', content}] })
-  });
-  if(!res.ok) throw new Error('AIに届きませんでした（' + res.status + '）');
+
+  let res;
+  try{
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST', headers,
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1000, messages:[{role:'user', content}] })
+    });
+  }catch(e){
+    /* fetch自体が失敗する＝通信が届いていない */
+    throw new Error('AIに接続できませんでした。電波の状態か、APIキーが正しいかを確かめてください。');
+  }
+
+  if(!res.ok){
+    const m = {
+      400:'送ったデータに問題がありました。写真を変えてもう一度お試しください。',
+      401:'APIキーが正しくありません。一番下の欄で入れ直してください。',
+      403:'このAPIキーでは使えません。キーの権限を確かめてください。',
+      429:'短時間に使いすぎました。少し待ってからお試しください。',
+      529:'AI側が混み合っています。少し待ってからお試しください。'
+    }[res.status] || `AIが応答しませんでした（エラー ${res.status}）。`;
+    throw new Error(m);
+  }
+
   const d = await res.json();
   return d.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');
 }
@@ -1386,6 +1421,12 @@ window.addEventListener('appinstalled', ()=>{
   if(!canDownload()){
     document.getElementById('dl-note').textContent = 'この画面ではファイル保存が使えないため、書き出すと下の欄に文字で出ます。';
     document.getElementById('dl-note').hidden = false;
+  }
+  /* キーがないとAI機能だけ使えないので、先に伝えておく */
+  if(!loadKey() && !hasCloud){
+    const n = document.getElementById('pic-result');
+    n.textContent = 'AIで読み取るには、「AIに相談」タブの一番下でAPIキーの設定が必要です。手入力なら設定なしで使えます。';
+    n.hidden = false;
   }
   renderStudents(); fillSelects(); renderTags(); renderRecent(); renderTagAdmin(); showSize();
 })();
