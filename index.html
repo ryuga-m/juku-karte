@@ -579,16 +579,83 @@ async function saveStudent(id){
   await save(); renderStudents(); fillSelects(); renderRecent(); toast('保存しました');
 }
 
-/* ---------- タグの管理 ---------- */
+/* ---------- タグの管理（科目ごとにまとめて表示） ---------- */
+let tagOpen = null;   // 今開いている科目
+
+/* 旧形式の見分け方。昔は科目を1文字に略していた */
+const LEGACY_HEADS = ['国','数','理','社','英','共'];
+function isTidy(t){
+  const parts = t.split(':');
+  if(parts.length < 2) return false;               // コロンなしの平たいタグ
+  if(LEGACY_HEADS.includes(parts[0])) return false; // 「英:長文:内容一致」など略記
+  return parts.length <= 3;
+}
+
 function renderTagAdmin(){
   const el = document.getElementById('tag-admin');
-  if(!DB.tags.length){ el.innerHTML = '<div class="empty">タグがありません。記録タブから追加できます。</div>'; return; }
-  el.innerHTML = DB.tags.map(t=>{
-    const n = DB.records.filter(r=>r.tags.includes(t)).length;
-    return `<span class="item">${esc(t)}<span style="color:var(--ink-2);font-size:11px">${n}</span>
-      <button onclick="renameTag('${esc(t)}')" title="名前を変える">直す</button>
-      <button onclick="removeTag('${esc(t)}')" title="一覧から消す">消す</button></span>`;
-  }).join('');
+  if(!DB.tags.length){ el.innerHTML = '<div class="empty">タグがありません。記録画面から追加できます。</div>'; return; }
+
+  const groups = {}, odd = [];
+  DB.tags.forEach(t=>{
+    if(isTidy(t)){ const k = t.split(':')[0]; (groups[k] = groups[k] || []).push(t); }
+    else odd.push(t);
+  });
+
+  const used = new Set();
+  DB.records.forEach(r=>r.tags.forEach(t=>used.add(t)));
+
+  let html = `<p class="note" style="margin:0 0 10px">全${DB.tags.length}個。科目を押すと中身が開きます。</p>`;
+
+  Object.keys(groups).forEach(k=>{
+    const open = tagOpen === k;
+    html += `<div style="border-bottom:1px solid var(--line)">
+      <button type="button" class="btn ghost small" style="border:0;width:100%;text-align:left;padding:10px 2px"
+        onclick="tagOpen=${open?'null':`'${esc(k)}'`};renderTagAdmin()">
+        ${open?'▾':'▸'} ${esc(k)} <span style="color:var(--ink-2)">${groups[k].length}個</span>
+      </button>`;
+    if(open){
+      html += `<div class="taglist" style="padding:0 2px 12px">`
+        + groups[k].map(t=>{
+            const n = DB.records.filter(r=>r.tags.includes(t)).length;
+            const label = t.split(':').slice(1).join(' › ');
+            return `<span class="item">${esc(label)}${n?`<span style="color:var(--red);font-size:11px">${n}</span>`:''}
+              <button onclick="renameTag('${esc(t)}')">直す</button>
+              <button onclick="removeTag('${esc(t)}')">消す</button></span>`;
+          }).join('')
+        + `</div>`;
+    }
+    html += `</div>`;
+  });
+
+  if(odd.length){
+    const oddUsed = odd.filter(t=>used.has(t)).length;
+    html += `<div style="margin-top:14px;padding:12px;border:1px solid #E8C3BF;border-left:3px solid var(--red);border-radius:var(--radius);background:#FDF3F2">
+      <p style="margin:0 0 6px;font-size:13px;font-weight:600;color:#7A2620">整っていないタグ ${odd.length}個</p>
+      <p class="note" style="margin:0 0 10px">「科目:単元:項目」の形になっていない古いタグです。`
+      + (oddUsed ? `うち${oddUsed}個は記録で使われているので残します。` : `どの記録にも使われていません。`)
+      + `</p>
+      <div class="taglist" style="margin-bottom:10px">`
+      + odd.map(t=>`<span class="item">${esc(t)}${used.has(t)?'<span style="color:var(--red);font-size:11px">使用中</span>':''}
+          <button onclick="removeTag('${esc(t)}')">消す</button></span>`).join('')
+      + `</div>
+      <button class="btn small" style="background:var(--red);border-color:var(--red)" onclick="purgeOddTags()">未使用の古いタグをまとめて消す</button>
+    </div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+/* 旧形式で、どの記録にも使われていないタグを一括で消す */
+async function purgeOddTags(){
+  const used = new Set();
+  DB.records.forEach(r=>r.tags.forEach(t=>used.add(t)));
+  const doomed = DB.tags.filter(t=>!isTidy(t) && !used.has(t));
+  if(!doomed.length){ toast('消せるタグはありません'); return; }
+  if(!confirm(`古い形式のタグ ${doomed.length}個を消します。\n記録で使われているものは残します。\nよろしいですか？`)) return;
+  DB.tags = DB.tags.filter(t=>!doomed.includes(t));
+  doomed.forEach(t=>sel.tags.delete(t));
+  await save(); renderTagAdmin(); renderTags(); showSize();
+  toast(doomed.length + '個を消しました');
 }
 async function renameTag(t){
   const v = (prompt('新しいタグ名', t)||'').trim();
