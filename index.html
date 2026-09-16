@@ -411,6 +411,12 @@
   </div>
 
   <div class="card">
+    <h2>写真読み取りの信頼度</h2>
+    <p class="note" style="margin:0 0 10px">AIがタグを提案したとき、先生がそのまま採用した割合です。低いほど「毎回大きく直している」ということなので、参考程度に見てください。</p>
+    <div id="accuracy-body"></div>
+  </div>
+
+  <div class="card">
     <h2>データの持ち出しと復元</h2>
     <p class="note" style="margin:0 0 4px">保存先：<span id="store-where">確認中</span></p>
     <p class="note" style="margin:0 0 12px">書き出して控えを取っておけば、消えても戻せます。別の端末に移すときも同じです。</p>
@@ -598,12 +604,32 @@ let DB = { schema:SCHEMA, students:[], records:[], tags:[], reasons:[...DEFAULT_
 let sel = { tags:new Set(), correct:null };
 
 /* ---------- 画面切替 ---------- */
+function renderAccuracy(){
+  const el = document.getElementById('accuracy-body');
+  if(!el) return;
+  const a = photoAccuracy();
+  if(!a){
+    el.innerHTML = '<div class="empty">まだ写真から記録していません。使うと、ここに精度が出ます。</div>';
+    return;
+  }
+  const cls = a.rate<50?'weak':(a.rate<75?'mid':'');
+  el.innerHTML = `<table><tbody>
+    <tr><td>写真から記録した数</td><td class="num">${a.n} 件</td></tr>
+    <tr><td>そのまま採用した数</td><td class="num">${a.kept} 件</td></tr>
+    <tr><td>採用率</td>
+      <td style="width:38%"><div class="bar ${cls}"><span style="width:${a.rate}%"></span></div></td>
+    </tr>
+  </tbody></table>
+  <p class="note" style="margin:8px 0 0">${a.n<10?'件数がまだ少ないので、目安程度に見てください。':''}</p>`;
+}
+
 function tab(id){
   ['rec','ana','ai','stu'].forEach(k=>{
     document.getElementById('p-'+k).hidden = (k!==id);
     document.getElementById('t-'+k).setAttribute('aria-selected', String(k===id));
   });
   if(id==='ana') renderAnalysis();
+  if(id==='ai') renderAccuracy();
 }
 
 function toast(msg){
@@ -896,19 +922,40 @@ function setGrade(ok){
   document.getElementById('g-ng').setAttribute('aria-pressed', String(!ok));
   document.getElementById('reason-box').hidden = ok;
 }
+/* 写真から下書きされた直後の、AIの「元の提案」。保存時に比較して精度を測る。
+   手入力で記録するときは null のまま＝比較対象なし。 */
+let photoDraft = null;
+
 async function saveRecord(){
   const sid = document.getElementById('f-stu').value;
   if(!sid){ toast('先に生徒を登録してください'); return; }
   if(sel.correct===null){ toast('正解／不正解を選んでください'); return; }
-  DB.records.push({
+
+  const finalSrc  = document.getElementById('f-src').value.trim();
+  const finalTags = [...sel.tags];
+  const finalMemo = document.getElementById('f-memo').value.trim();
+
+  const rec = {
     id:'r'+Date.now(), sid,
     date: document.getElementById('f-date').value || new Date().toISOString().slice(0,10),
-    src: document.getElementById('f-src').value.trim(),
-    tags:[...sel.tags],
+    src: finalSrc,
+    tags: finalTags,
     correct: sel.correct,
     reason: sel.correct ? '' : document.getElementById('f-reason').value,
-    memo: document.getElementById('f-memo').value.trim()
-  });
+    memo: finalMemo
+  };
+
+  /* 直前に写真読み取りがあった場合だけ、精度を記録する。
+     「タグが1つも変わらず、そのまま残った」かどうかで判定する。
+     出典・メモは表現ゆれが起きやすいので、判定には使わない。 */
+  if(photoDraft){
+    const same = a => JSON.stringify([...a].sort()) === JSON.stringify(photoDraft.tags);
+    rec.origin = 'photo';
+    rec.aiKept = same(finalTags);
+  }
+
+  DB.records.push(rec);
+  photoDraft = null;   // 次の記録は手入力扱いに戻す
   await save();
   // 出典・タグは連続入力しやすいよう残す
   document.getElementById('f-memo').value='';
@@ -1041,6 +1088,16 @@ async function delRecord(id){
 }
 
 /* ---------- 分析 ---------- */
+
+/* 写真読み取りの精度＝「AIが提案したタグを、先生がそのまま採用した割合」。
+   生徒を横断して全体で見る。件数が少ないうちは参考程度。 */
+function photoAccuracy(){
+  const shots = DB.records.filter(r=>r.origin==='photo');
+  if(!shots.length) return null;
+  const kept = shots.filter(r=>r.aiKept).length;
+  return { n: shots.length, kept, rate: Math.round(kept/shots.length*100) };
+}
+
 function statsFor(sid){
   const rs = DB.records.filter(r=>r.sid===sid);
   const byTag = {};
@@ -1190,12 +1247,12 @@ async function analyzePhoto(input){
     const text = await callClaude([
       { type:'image', source:{ type:'base64', media_type:'image/jpeg', data } },
       { type:'text', text:
-`この画像は英語の問題です。中身は保存しないので、分類のための情報だけ答えてください。
+`この画像は生徒の問題演習です。科目は問いません。中身は保存しないので、分類のための情報だけ答えてください。
 
-使えるタグ一覧：${DB.tags.join('、')}
+使えるタグ一覧：${DB.tags.join('、') || '（まだ登録されていません。内容から適切なタグを新しく作ってください）'}
 
 次のJSONだけを返してください。前置きもコードブロックも不要です。
-{"src":"出典が読み取れれば書く。なければ空文字","tags":["該当する分野タグ。一覧になければ新しく作ってよい"],"memo":"何の力が問われる問題か、20字程度"}` }
+{"src":"出典が読み取れれば書く。なければ空文字","tags":["該当する分野タグ。一覧になければ「科目:単元:項目」の形式で新しく作ってよい"],"memo":"何の力が問われる問題か、20字程度"}` }
     ]);
     const j = JSON.parse(text.replace(/```json|```/g,'').trim());
 
@@ -1205,6 +1262,8 @@ async function analyzePhoto(input){
       if(!DB.tags.includes(t)) DB.tags.push(t);
       sel.tags.add(t);
     });
+    /* AIが出した「元の提案」を控えておく。保存時にどれだけ直したかを見るため */
+    photoDraft = { src: j.src||'', tags: [...(j.tags||[])].sort(), memo: j.memo||'' };
     await save(); renderTags(); renderTagAdmin();
     out.textContent = '下書きしました。中身を確かめて直してください。';
     out.hidden = false;
